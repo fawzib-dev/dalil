@@ -53,6 +53,8 @@ vercel --prod
 
 The project is a Next.js app and is ready to deploy to Vercel. Optional Supabase settings are documented in `.env.example`.
 
+Live deployment: [dalil-five.vercel.app](https://dalil-five.vercel.app/)
+
 ## Project map
 
 * `app/` contains the Next.js shell and global design system.
