@@ -51,8 +51,15 @@ import { getLevelProgress, getReviewDate, prepareQuestions } from "@/lib/quiz";
 import { defaultProgress, loadProgress, saveProgress } from "@/lib/storage";
 import { AttemptSummary, Evidence, Lesson, Question, Topic, UserProgress } from "@/types/quiz";
 
-type View = "landing" | "dashboard" | "topics" | "topic" | "lesson" | "quiz" | "results" | "review" | "library" | "profile" | "admin";
+type View = "landing" | "onboarding" | "dashboard" | "topics" | "topic" | "lesson" | "quiz" | "results" | "review" | "library" | "profile" | "admin";
 type EvidenceFilter = "all" | "quran" | "hadith";
+type OnboardingGoal = "foundations" | "consistency" | "evidence";
+
+interface OnboardingAnswers {
+  goal?: OnboardingGoal;
+  dailyMinutes?: 5 | 10 | 15;
+  topicId?: string;
+}
 
 interface QuizSession {
   questions: Question[];
@@ -169,6 +176,8 @@ export default function DalilApp() {
   const [activeTopicId, setActiveTopicId] = useState("following-the-prophet");
   const [activeLessonId, setActiveLessonId] = useState("following-the-prophet-2");
   const [session, setSession] = useState<QuizSession | null>(null);
+  const [onboardingStep, setOnboardingStep] = useState(0);
+  const [onboardingAnswers, setOnboardingAnswers] = useState<OnboardingAnswers>({});
   const [libraryFilter, setLibraryFilter] = useState<EvidenceFilter>("all");
   const [librarySearch, setLibrarySearch] = useState("");
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -200,6 +209,30 @@ export default function DalilApp() {
   function navigate(nextView: View) {
     setView(nextView);
     setMobileMenuOpen(false);
+  }
+
+  function beginLearning() {
+    if (progress.onboardingComplete) {
+      navigate("dashboard");
+      return;
+    }
+    setOnboardingStep(0);
+    setOnboardingAnswers({});
+    navigate("onboarding");
+  }
+
+  function finishOnboarding() {
+    const topic = getTopic(onboardingAnswers.topicId ?? "following-the-prophet");
+    setProgress((current) => ({
+      ...current,
+      onboardingComplete: true,
+      onboardingGoal: onboardingAnswers.goal ?? "foundations",
+      dailyMinutes: onboardingAnswers.dailyMinutes ?? 5,
+      preferredTopicId: topic.id,
+    }));
+    setActiveTopicId(topic.id);
+    setActiveLessonId(topic.lessons[0].id);
+    navigate("dashboard");
   }
 
   function openTopic(topicId: string) {
@@ -286,6 +319,7 @@ export default function DalilApp() {
         ahadithLearned: current.ahadithLearned + (previous || question.evidence.type !== "hadith" ? 0 : 1),
         reviewIds: nextReviewIds,
         attempts: { ...current.attempts, [question.id]: nextAttempt },
+        studyDates: Array.from(new Set([...current.studyDates, today])).slice(-30),
         lastStudyDate: today,
       };
     });
@@ -312,6 +346,7 @@ export default function DalilApp() {
   }
 
   function renderView() {
+    if (view === "onboarding") return <Onboarding />;
     if (view === "dashboard") return <Dashboard />;
     if (view === "topics") return <Topics />;
     if (view === "topic") return <TopicDetail />;
@@ -325,10 +360,57 @@ export default function DalilApp() {
     return <Dashboard />;
   }
 
+  function Onboarding() {
+    const goalOptions: { id: OnboardingGoal; title: string; detail: string; icon: LucideIcon }[] = [
+      { id: "foundations", title: "Build the foundations", detail: "Start with the essentials, one clear idea at a time.", icon: Compass },
+      { id: "consistency", title: "Stay consistent", detail: "Create a small learning rhythm you can return to.", icon: Flame },
+      { id: "evidence", title: "Keep the evidence close", detail: "Go deeper into the sources behind what you believe.", icon: BookOpen },
+    ];
+    const timeOptions: { id: 5 | 10 | 15; title: string; detail: string }[] = [
+      { id: 5, title: "5 minutes", detail: "A focused daily reset" },
+      { id: 10, title: "10 minutes", detail: "A little more room to reflect" },
+      { id: 15, title: "15 minutes", detail: "A deeper learning session" },
+    ];
+    const topicOptions = topics.slice(0, 4);
+    const selected = onboardingStep === 0 ? onboardingAnswers.goal : onboardingStep === 1 ? onboardingAnswers.dailyMinutes : onboardingAnswers.topicId;
+    const canContinue = Boolean(selected);
+
+    function choose(value: OnboardingGoal | 5 | 10 | 15 | string) {
+      if (onboardingStep === 0) setOnboardingAnswers((current) => ({ ...current, goal: value as OnboardingGoal }));
+      if (onboardingStep === 1) setOnboardingAnswers((current) => ({ ...current, dailyMinutes: value as 5 | 10 | 15 }));
+      if (onboardingStep === 2) setOnboardingAnswers((current) => ({ ...current, topicId: value as string }));
+    }
+
+    return (
+      <div className="onboarding-page">
+        <div className="onboarding-topbar"><Logo /><span className="onboarding-save-note">Your choices stay on this device</span></div>
+        <main className="onboarding-shell">
+          <div className="onboarding-progress-row"><span>YOUR STARTING POINT</span><strong>{onboardingStep + 1} of 3</strong></div>
+          <div className="onboarding-progress-track"><span style={{ width: `${((onboardingStep + 1) / 3) * 100}%` }} /></div>
+          <section className="onboarding-step" aria-live="polite">
+            <span className="eyebrow">WELCOME TO DALĪL</span>
+            {onboardingStep === 0 && <><h1>What are you hoping to build?</h1><p>There is no right answer. We&apos;ll use this to shape your first few steps.</p><div className="onboarding-choice-grid">{goalOptions.map(({ id, title, detail, icon: Icon }) => <button key={id} className={`onboarding-choice ${selected === id ? "is-selected" : ""}`} aria-pressed={selected === id} onClick={() => choose(id)}><span className="onboarding-choice-icon"><Icon size={21} /></span><span><strong>{title}</strong><small>{detail}</small></span><span className="onboarding-choice-mark">{selected === id ? <Check size={16} /> : ""}</span></button>)}</div></>}
+            {onboardingStep === 1 && <><h1>How much time feels right?</h1><p>Choose a pace that feels light enough to keep. You can change it later.</p><div className="onboarding-choice-grid onboarding-time-grid">{timeOptions.map(({ id, title, detail }) => <button key={id} className={`onboarding-choice ${selected === id ? "is-selected" : ""}`} aria-pressed={selected === id} onClick={() => choose(id)}><span className="onboarding-time-value">{id}</span><span><strong>{title}</strong><small>{detail}</small></span><span className="onboarding-choice-mark">{selected === id ? <Check size={16} /> : ""}</span></button>)}</div></>}
+            {onboardingStep === 2 && <><h1>Choose your first path.</h1><p>Begin with one topic. Dalīl will keep the next step clear.</p><div className="onboarding-topic-grid">{topicOptions.map((topic) => <button key={topic.id} className={`onboarding-topic-choice ${selected === topic.id ? "is-selected" : ""} ${accentClass[topic.accent]}`} aria-pressed={selected === topic.id} onClick={() => choose(topic.id)}><span className="topic-icon"><TopicIcon topic={topic} size={21} /></span><span><strong>{topic.shortTitle}</strong><small>{topic.description}</small></span><span className="onboarding-choice-mark">{selected === topic.id ? <Check size={16} /> : ""}</span></button>)}</div></>}
+          </section>
+          <div className="onboarding-actions"><button className="onboarding-back" onClick={() => onboardingStep > 0 ? setOnboardingStep((step) => step - 1) : navigate("landing")}><ArrowLeft size={16} /> {onboardingStep > 0 ? "Back" : "Exit"}</button><button className="button button-primary" disabled={!canContinue} onClick={() => onboardingStep === 2 ? finishOnboarding() : setOnboardingStep((step) => step + 1)}>{onboardingStep === 2 ? "Start my path" : "Continue"} <ArrowRight size={17} /></button></div>
+          <p className="onboarding-footer-note"><ShieldCheck size={15} /> No account required. Your learning starts at zero.</p>
+        </main>
+      </div>
+    );
+  }
+
   function Dashboard() {
-    const continueTopic = getTopic("following-the-prophet");
-    const continueLesson = continueTopic.lessons[2];
+    const isNewLearner = progress.questionsAnswered === 0 && progress.completedLessons.length === 0;
+    const continueTopic = getTopic(progress.preferredTopicId ?? "following-the-prophet");
+    const continueLesson = continueTopic.lessons.find((lesson) => !progress.completedLessons.includes(lesson.id)) ?? continueTopic.lessons[0];
+    const continueLessonNumber = continueTopic.lessons.indexOf(continueLesson) + 1;
     const topicProgress = Math.round((progress.completedLessons.filter((id) => continueTopic.lessons.some((lesson) => lesson.id === id)).length / continueTopic.lessons.length) * 100);
+    const weekActivity = Array.from({ length: 7 }, (_, index) => {
+      const day = new Date();
+      day.setDate(day.getDate() - (6 - index));
+      return progress.studyDates.includes(day.toISOString().slice(0, 10));
+    });
     return (
       <>
         <PageHeader eyebrow={todayLabel} title="Assalamu Alaikum, Student" description="A few minutes of learning can reshape an entire day." action={<button className="icon-button" aria-label="Open settings" onClick={() => navigate("profile")}><Settings2 size={18} /></button>} />
@@ -342,13 +424,13 @@ export default function DalilApp() {
                 <div className="level-line"><span>Level {level.level}</span><span>{level.current} / {level.total} XP</span></div>
                 <ProgressBar value={level.percentage} />
               </div>
-              <div className="level-emblem"><span>04</span><small>level</small></div>
+              <div className="level-emblem"><span>{String(level.level).padStart(2, "0")}</span><small>level</small></div>
             </div>
 
-            <div className="section-heading"><div><span className="eyebrow">CONTINUE LEARNING</span><h2>Pick up where you left off</h2></div><button className="text-button" onClick={() => navigate("topics")}>View all topics <ArrowRight size={15} /></button></div>
+            <div className="section-heading"><div><span className="eyebrow">{isNewLearner ? "YOUR FIRST STEP" : "CONTINUE LEARNING"}</span><h2>{isNewLearner ? "Start with one clear lesson" : "Pick up where you left off"}</h2></div><button className="text-button" onClick={() => navigate("topics")}>View all topics <ArrowRight size={15} /></button></div>
             <button className="continue-card" onClick={() => { setActiveLessonId(continueLesson.id); setActiveTopicId(continueTopic.id); startQuiz(undefined, continueTopic.title, continueLesson.id); }}>
               <div className="continue-art"><span className="art-arabic">وَقُل رَّبِّ زِدْنِي عِلْمًا</span><span className="art-reference">Taha 20:114</span></div>
-              <div className="continue-copy"><div className="card-kicker"><span className="topic-pill"><SunMedium size={13} /> Sunnah</span><span>Lesson 03 / 10</span></div><h3>Holding to the Sunnah</h3><p>Discover how guidance becomes a way of life.</p><div className="continue-progress"><ProgressBar value={topicProgress || 30} /><span>{topicProgress || 30}%</span></div></div>
+              <div className="continue-copy"><div className="card-kicker"><span className="topic-pill"><TopicIcon topic={continueTopic} size={13} /> {continueTopic.shortTitle}</span><span>{isNewLearner ? "First lesson" : `Lesson ${String(continueLessonNumber).padStart(2, "0")} / ${continueTopic.lessons.length}`}</span></div><h3>{continueLesson.title}</h3><p>{isNewLearner ? "A short, evidence-first place to begin." : continueLesson.description}</p><div className="continue-progress"><ProgressBar value={topicProgress} /><span>{topicProgress}%</span></div></div>
               <span className="circle-arrow"><ArrowRight size={19} /></span>
             </button>
 
@@ -356,8 +438,8 @@ export default function DalilApp() {
             <div className="topic-grid dashboard-topics">{topics.slice(0, 6).map((topic) => <TopicCard key={topic.id} topic={topic} onClick={() => openTopic(topic.id)} />)}</div>
           </section>
           <aside className="dashboard-aside">
-            <div className="daily-card"><div className="daily-top"><span className="eyebrow">TODAY&apos;S DALĪL</span><span className="date-badge">{todayBadge}</span></div><h3>One āyah.<br /><em>One lasting lesson.</em></h3><p>A five-question reflection on following the Messenger ﷺ.</p><button className="button button-dark" onClick={() => startQuiz(["sunnah-001", "sunnah-002", "sunnah-003", "sunnah-004", "sunnah-005"], "Today's Dalīl")}>Begin challenge <ArrowRight size={16} /></button><div className="daily-footer"><Flame size={15} /> {progress.currentStreak} day learning streak</div></div>
-            <div className="mini-stat-card"><div className="mini-stat-head"><span className="eyebrow">YOUR MOMENTUM</span><MoreHorizontal size={17} /></div><div className="momentum-number">{accuracy}<span>%</span></div><p>answer accuracy</p><div className="week-dots"><span className="active" /><span className="active" /><span className="active" /><span className="active" /><span className="active" /><span /><span /></div><div className="week-labels"><span>M</span><span>T</span><span>W</span><span>T</span><span>F</span><span>S</span><span>S</span></div></div>
+            <div className="daily-card"><div className="daily-top"><span className="eyebrow">TODAY&apos;S DALĪL</span><span className="date-badge">{todayBadge}</span></div><h3>One āyah.<br /><em>One lasting lesson.</em></h3><p>A five-question reflection on following the Messenger ﷺ.</p><button className="button button-dark" onClick={() => startQuiz(["sunnah-001", "sunnah-002", "sunnah-003", "sunnah-004", "sunnah-005"], "Today's Dalīl")}>Begin challenge <ArrowRight size={16} /></button><div className="daily-footer"><Flame size={15} /> {progress.currentStreak} {progress.currentStreak === 1 ? "day" : "days"} learning streak</div></div>
+            <div className="mini-stat-card"><div className="mini-stat-head"><span className="eyebrow">YOUR MOMENTUM</span><MoreHorizontal size={17} /></div><div className="momentum-number">{accuracy}<span>%</span></div><p>answer accuracy</p><div className="week-dots">{weekActivity.map((active, index) => <span className={active ? "active" : ""} key={index} />)}</div><div className="week-labels"><span>M</span><span>T</span><span>W</span><span>T</span><span>F</span><span>S</span><span>S</span></div></div>
           </aside>
         </div>
       </>
@@ -429,10 +511,11 @@ export default function DalilApp() {
   }
 
   function Landing() {
-    return <div className="landing-page"><nav className="landing-nav"><Logo light /><div className="landing-nav-links"><span>Qur&apos;an</span><span>Sunnah</span><span>Learn with evidence</span></div><button className="landing-signin" onClick={() => navigate("dashboard")}>Open dashboard <ArrowRight size={15} /></button></nav><main className="landing-main"><div className="landing-copy"><span className="eyebrow landing-eyebrow">QUR&apos;AN · SUNNAH · KNOWLEDGE</span><h1>Build your faith,<br /><em>one proof</em> at a time.</h1><p>Dalīl turns Islamic learning into a calm, meaningful practice. Read the evidence. Test your understanding. Carry the lesson with you.</p><button className="button button-light landing-cta" onClick={() => navigate("dashboard")}>Start learning <ArrowRight size={17} /></button><div className="landing-trust"><div className="trust-avatars"><span>ف</span><span>ع</span><span>م</span><span>+</span></div><span>Learn at your own pace<br /><small>with the source always in view</small></span></div></div><div className="landing-art"><div className="orbit orbit-one" /><div className="orbit orbit-two" /><div className="evidence-float evidence-float-back"><span className="eyebrow">A LIVING GUIDE</span><p dir="rtl" lang="ar">وَقُل رَّبِّ زِدْنِي عِلْمًا</p><small>“My Lord, increase me in knowledge.”</small></div><div className="landing-evidence-card"><div className="landing-card-head"><span><span className="source-dot quran" /> QUR&apos;AN</span><span>20:114</span></div><p className="arabic-text" dir="rtl" lang="ar">وَقُل رَّبِّ زِدْنِي عِلْمًا</p><p className="translation">“And say, My Lord, increase me in knowledge.”</p><div className="card-rule" /><div className="landing-card-foot"><span>Read</span><span className="card-check"><Check size={13} /></span></div></div><div className="float-streak"><Flame size={16} /><div><strong>5</strong><span>day streak</span></div></div></div></main><footer className="landing-footer"><span>LEARN · REFLECT · REMEMBER</span><span>Crafted for the sincere student</span><span>Scroll to begin <ArrowRight size={14} /></span></footer></div>;
+    return <div className="landing-page"><nav className="landing-nav"><Logo light /><div className="landing-nav-links"><span>Qur&apos;an</span><span>Sunnah</span><span>Learn with evidence</span></div><button className="landing-signin" onClick={beginLearning}>Open dashboard <ArrowRight size={15} /></button></nav><main className="landing-main"><div className="landing-copy"><span className="eyebrow landing-eyebrow">QUR&apos;AN · SUNNAH · KNOWLEDGE</span><h1>Build your faith,<br /><em>one proof</em> at a time.</h1><p>Dalīl turns Islamic learning into a calm, meaningful practice. Read the evidence. Test your understanding. Carry the lesson with you.</p><button className="button button-light landing-cta" onClick={beginLearning}>Start learning <ArrowRight size={17} /></button><div className="landing-trust"><div className="trust-avatars"><span>ف</span><span>ع</span><span>م</span><span>+</span></div><span>Learn at your own pace<br /><small>with the source always in view</small></span></div></div><div className="landing-art"><div className="orbit orbit-one" /><div className="orbit orbit-two" /><div className="evidence-float evidence-float-back"><span className="eyebrow">A LIVING GUIDE</span><p dir="rtl" lang="ar">وَقُل رَّبِّ زِدْنِي عِلْمًا</p><small>“My Lord, increase me in knowledge.”</small></div><div className="landing-evidence-card"><div className="landing-card-head"><span><span className="source-dot quran" /> QUR&apos;AN</span><span>20:114</span></div><p className="arabic-text" dir="rtl" lang="ar">وَقُل رَّبِّ زِدْنِي عِلْمًا</p><p className="translation">“And say, My Lord, increase me in knowledge.”</p><div className="card-rule" /><div className="landing-card-foot"><span>Read</span><span className="card-check"><Check size={13} /></span></div></div><div className="float-streak"><Flame size={16} /><div><strong>5</strong><span>day streak</span></div></div></div></main><footer className="landing-footer"><span>LEARN · REFLECT · REMEMBER</span><span>Crafted for the sincere student</span><span>Scroll to begin <ArrowRight size={14} /></span></footer></div>;
   }
 
   if (view === "landing") return <Landing />;
+  if (view === "onboarding") return <Onboarding />;
 
   return <div className="app-shell"><aside className={`sidebar ${mobileMenuOpen ? "mobile-open" : ""}`}><div className="sidebar-top"><Logo /><button className="mobile-close" onClick={() => setMobileMenuOpen(false)}><X size={19} /></button></div><div className="sidebar-label">LEARNING SPACE</div><nav className="sidebar-nav">{navItems.map(({ id, label, icon: Icon }) => <button key={id} className={view === id || (id === "topics" && (view === "topic" || view === "lesson")) ? "active" : ""} onClick={() => navigate(id)}><Icon size={18} /><span>{label}</span>{id === "review" && progress.reviewIds.length > 0 && <b>{progress.reviewIds.length}</b>}</button>)}</nav><div className="sidebar-bottom"><div className="sidebar-streak"><Flame size={16} /><div><strong>{progress.currentStreak} days</strong><span>learning streak</span></div></div><button className="profile-mini" onClick={() => navigate("profile")}><span className="mini-avatar">S</span><span><strong>Student</strong><small>Level {level.level}</small></span><MoreHorizontal size={17} /></button></div></aside><div className="main-column"><header className="mobile-topbar"><button className="mobile-menu" onClick={() => setMobileMenuOpen(true)}><Menu size={20} /></button><Logo /><button className="icon-button" onClick={() => setProgress({ ...progress, theme: progress.theme === "light" ? "dark" : "light" })}>{progress.theme === "light" ? <Moon size={17} /> : <Sun size={17} />}</button></header><main className="content-area">{renderView()}</main></div><nav className="bottom-nav">{navItems.map(({ id, label, icon: Icon }) => <button key={id} className={view === id || (id === "topics" && (view === "topic" || view === "lesson")) ? "active" : ""} onClick={() => navigate(id)}><Icon size={18} /><span>{label}</span>{id === "review" && progress.reviewIds.length > 0 && <b />}</button>)}</nav></div>;
 }

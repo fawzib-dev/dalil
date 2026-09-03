@@ -80,6 +80,11 @@ export interface UserProgress {
   completedLessons: string[];
   reviewIds: string[];
   attempts: Record<string, AttemptSummary>;
+  studyDates: string[];
   lastStudyDate?: string;
   theme: "light" | "dark";
+  onboardingComplete: boolean;
+  onboardingGoal?: "foundations" | "consistency" | "evidence";
+  dailyMinutes?: 5 | 10 | 15;
+  preferredTopicId?: string;
 }

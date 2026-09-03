@@ -1,21 +1,23 @@
 import { UserProgress } from "@/types/quiz";
 
-export const STORAGE_KEY = "dalil-progress-v1";
+export const STORAGE_KEY = "dalil-progress-v2";
 
 export const defaultProgress: UserProgress = {
-  xp: 3820,
-  level: 4,
-  currentStreak: 5,
-  longestStreak: 12,
-  questionsAnswered: 284,
-  correctAnswers: 247,
-  ayatLearned: 48,
-  ahadithLearned: 31,
-  completedLessons: ["following-the-prophet-1", "following-the-prophet-2"],
-  reviewIds: ["sunnah-003", "sunnah-006", "parents-001"],
+  xp: 0,
+  level: 1,
+  currentStreak: 0,
+  longestStreak: 0,
+  questionsAnswered: 0,
+  correctAnswers: 0,
+  ayatLearned: 0,
+  ahadithLearned: 0,
+  completedLessons: [],
+  reviewIds: [],
   attempts: {},
+  studyDates: [],
   lastStudyDate: undefined,
   theme: "light",
+  onboardingComplete: false,
 };
 
 export function loadProgress(): UserProgress {
